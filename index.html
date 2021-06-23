@@ -10,6 +10,7 @@
             color: white;
             text-align: center;
         }
+
         pre {
             margin-left: 35vw;
             text-align: left;
@@ -80,7 +81,9 @@ Output:
             let pSeg4 = arr[i].slice(16 / 2, 20 / 2);
             let pSeg5 = arr[i].slice(20 / 2, 32 / 2);
 
-            outputNames[i] = `${convertHexArrToReadableHex(rotateBytes(pSeg1))}${convertHexArrToReadableHex(rotateBytes(pSeg2))}${convertHexArrToReadableHex(rotateBytes(pSeg3))}${convertHexArrToReadableHex(pSeg4)}${convertHexArrToReadableHex(pSeg5)}`.toUpperCase();
+            outputNames[i] = `${convertHexArrToReadableHex(rotateBytes(pSeg1))}${convertHexArrToReadableHex(
+                rotateBytes(pSeg2))}${convertHexArrToReadableHex(rotateBytes(pSeg3))}${convertHexArrToReadableHex(pSeg4)}${convertHexArrToReadableHex(
+                pSeg5)}`.toUpperCase();
         }
 
         return outputNames;
@@ -108,9 +111,9 @@ Output:
             }
 
             let testHex = currentHex.substr(0, 12);
-            let match = testCase.exec(testHex);
-            if(match && match[1]) {
-                currentHex = "\\u0" + match[1];
+            let match   = testCase.exec(testHex);
+            if (match && match[1]) {
+                currentHex = '\\u0' + match[1];
             }
 
             if (currentHex !== '\\u000' && prevHex === '\\u000' && lookBackHex === '\\u000') {
@@ -148,7 +151,7 @@ Output:
 
         let output = {};
         for (let i = 0; i < fileNames.length; i++) {
-            if(filePaths[i].length < 32) {
+            if (filePaths[i].length < 32) {
                 console.error(filePaths[i]);
             }
             output[fileNames[i]] = filePaths[i];
@@ -187,13 +190,20 @@ Output:
 
     document.getElementById('file').addEventListener('change', (e) => {
         const tmpFile = e.target.files[0];
-        const testCase = /^container\.[0-9]{1,}/
 
-        if(!testCase.test(tmpFile)) {
-            alert('Only container.XX files are supported!');
-        }
+        let fileReader    = new FileReader();
+        fileReader.onload = (function (readFile) {
+            const testCase = /^container\.[0-9]{1,}/;
+            if (readFile && !testCase.test(readFile.name)) {
+                alert('Only container.XX files are supported!');
+                e.preventDefault();
+                document.getElementById('file').value = '';
+            } else {
+                file = tmpFile;
+            }
+        })(tmpFile);
 
-        file = tmpFile;
+        fileReader.readAsDataURL(tmpFile);
     }, false);
     document.getElementById('processFile').addEventListener('click', (e) => {
         readBlob();
