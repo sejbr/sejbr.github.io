@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Windows Store Save Name Parser</title>
+    <style>
+        body {
+            margin-top: 5vh;
+            background-color: black;
+            color: white;
+            text-align: center;
+        }
+        pre {
+            margin-left: 35vw;
+            text-align: left;
+        }
+    </style>
+</head>
+<body>
+Select your container.XXX file.<br/>
+Usually located in C:\Users\{user}\AppData\Local\Packages\{package_name}\{game specific path}
+<br/>
+<br/>
+<input class="form-control" type="file" id="file" name="file" accept="*">
+<button id="processFile">Process file</button>
+<br/>
+<br/>
+Output:
+<pre id="outputJson"></pre>
+<script type="application/javascript">
+    convertToHex = (char) => {
+        return '\\u' + ('00' + char.charCodeAt(0).toString(16)).slice(-4);
+    };
+
+    unpack = (str) => {
+        const re  = /[0-9A-Fa-f]{6}/g;
+        let bytes = [];
+        for (let i = 0; i < str.length; i++) {
+            let char = str.charAt(i);
+            if (re.test(char)) {
+                bytes.push(char);
+            } else {
+                bytes.push(convertToHex(char));
+            }
+        }
+        return bytes;
+    };
+
+    processNameHexArr = (arr) => {
+        let outputNames = [];
+
+        for (let i = 0; i < arr.length; i++) {
+            let tmpHex = arr[i];
+            for (let j = 0; j < tmpHex.length; j++) {
+                if (!outputNames[i]) {
+                    outputNames[i] = '';
+                }
+                let tmpName = hexToStr(tmpHex[j]);
+                if (tmpName.indexOf('%') === -1) {
+                    outputNames[i] += hexToStr(tmpHex[j]);
+                }
+            }
+            if (outputNames[i] === '' || outputNames[i].length < 3) {
+                outputNames.splice(i, 1);
+            }
+        }
+
+        outputNames = outputNames.filter(Boolean);
+
+        return outputNames;
+    };
+
+    processPathHexArr = (arr) => {
+        let outputNames = [];
+
+        for (let i = 0; i < arr.length; i++) {
+            let pSeg1 = arr[i].slice(0, 8 / 2);
+            let pSeg2 = arr[i].slice(8 / 2, 12 / 2);
+            let pSeg3 = arr[i].slice(12 / 2, 16 / 2);
+            let pSeg4 = arr[i].slice(16 / 2, 20 / 2);
+            let pSeg5 = arr[i].slice(20 / 2, 32 / 2);
+
+            outputNames[i] = `${convertHexArrToReadableHex(rotateBytes(pSeg1))}${convertHexArrToReadableHex(rotateBytes(pSeg2))}${convertHexArrToReadableHex(rotateBytes(pSeg3))}${convertHexArrToReadableHex(pSeg4)}${convertHexArrToReadableHex(pSeg5)}`.toUpperCase();
+        }
+
+        return outputNames;
+    };
+
+    processFile = (readFile) => {
+        const hexArr = unpack(readFile.target.result);
+
+        let pathHexes = [];
+        let nameHexes = [];
+
+        let idx     = 0;
+        let pathHex = false;
+
+        const testCase = /u([0-9a-fA-F]{3})$/;
+        for (let i = 0; i < hexArr.length; i++) {
+            let lookBackHex  = hexArr[i - 2];
+            let prevHex      = hexArr[i - 1];
+            let currentHex   = hexArr[i];
+            let nextHex      = hexArr[i + 1];
+            let lookAheadHex = hexArr[i + 2];
+
+            if (currentHex === '\\u000') {
+                continue;
+            }
+
+            let testHex = currentHex.substr(0, 12);
+            let match = testCase.exec(testHex);
+            if(match && match[1]) {
+                currentHex = "\\u0" + match[1];
+            }
+
+            if (currentHex !== '\\u000' && prevHex === '\\u000' && lookBackHex === '\\u000') {
+                idx++;
+            }
+
+            if (currentHex !== '\\u000' && nextHex !== '\\u000') {
+                pathHex = true;
+            }
+
+            if (currentHex !== '\\u000' && nextHex === '\\u000' && lookAheadHex !== '\\u000') {
+                pathHex = false;
+            }
+
+            if (pathHex) {
+                if (!pathHexes[idx]) {
+                    pathHexes[idx] = [];
+                }
+
+                pathHexes[idx].push(currentHex);
+            } else {
+                if (!nameHexes[idx]) {
+                    nameHexes[idx] = [];
+                }
+
+                nameHexes[idx].push(currentHex);
+            }
+        }
+
+        pathHexes = pathHexes.filter(Boolean);
+        nameHexes = nameHexes.filter(Boolean);
+
+        let fileNames = processNameHexArr(nameHexes);
+        let filePaths = processPathHexArr(pathHexes);
+
+        let output = {};
+        for (let i = 0; i < fileNames.length; i++) {
+            if(filePaths[i].length < 32) {
+                console.error(filePaths[i]);
+            }
+            output[fileNames[i]] = filePaths[i];
+        }
+
+        document.getElementById('outputJson').innerHTML = JSON.stringify(output, null, 2);
+    };
+
+    hexToStr = (hex) => {
+        return unescape(hex.replace(/\\/g, '%'));
+    };
+
+    rotateBytes = (bytes) => {
+        return bytes.reverse();
+    };
+
+    convertHexArrToReadableHex = (hexArr) => {
+        let hexStr = '';
+        for (let i = 0; i < hexArr.length; i++) {
+            let tmpHex = hexArr[i].substr(4);
+            hexStr += tmpHex;
+        }
+        return hexStr;
+    };
+
+    readBlob = () => {
+        let fileReader       = new FileReader();
+        fileReader.onloadend = function (readFile) {
+            processFile(readFile);
+        };
+
+        fileReader.readAsBinaryString(file);
+    };
+
+    let file;
+
+    document.getElementById('file').addEventListener('change', (e) => {
+        const tmpFile = e.target.files[0];
+        const testCase = /^container\.[0-9]{1,}/
+
+        if(!testCase.test(tmpFile)) {
+            alert('Only container.XX files are supported!');
+        }
+
+        file = tmpFile;
+    }, false);
+    document.getElementById('processFile').addEventListener('click', (e) => {
+        readBlob();
+    }, false);
+</script>
+</body>
+</html>
+
